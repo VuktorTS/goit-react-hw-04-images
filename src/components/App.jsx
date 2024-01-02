@@ -1,4 +1,4 @@
-import { Component } from 'react';
+import { useState, useEffect } from 'react';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
@@ -13,119 +13,108 @@ import { getImages } from 'services/pixabayApi';
 
 import css from './App.module.css';
 
-export class App extends Component {
-  state = {
-    searchImage: '',
-    status: STATUSES.idle, // "idle" | "pending" | "success" | "error"
-    page: 1,
-    images: [],
-    totalPages: null,
-    showModal: false,
-    largeImageURL: '',
-    error: null,
-  };
+export const App = () => {
+  const [searchImage, setSearchImage] = useState('');
+  const [status, setStatus] = useState(STATUSES.idle);
+  const [page, setPage] = useState(1);
+  const [tags, setTags] = useState('');
+  const [images, setImages] = useState([]);
+  const [totalPages, setTotalPages] = useState(null);
+  const [showModal, setShowModal] = useState(false);
+  const [largeImageURL, setLargeImageURL] = useState('');
+  const [error, setError] = useState(null);
 
-  componentDidUpdate(_, prevState) {
-    const orMakeRequest =
-      prevState.searchImage !== this.state.searchImage ||
-      prevState.page !== this.state.page;
-
-    const showError = prevState.error !== this.state.error;
-
-    const didYouShowAllImages =
-      this.state.page === this.state.totalPages &&
-      prevState.status === STATUSES.pending;
-
-    if (orMakeRequest) {
-      this.addImages();
+  useEffect(() => {
+    if (searchImage === '') {
+      return;
     }
 
-    if (showError) {
-      toast.error(`Something went wrong! ${this.state.error}`);
-    }
+    const addImages = async () => {
+      try {
+        setStatus(STATUSES.pending);
+        const { hits, totalHits } = await getImages(searchImage, page);
+        setStatus(STATUSES.success);
 
-    if (didYouShowAllImages) {
-      toast.success(
-        'Sorry, there are no more images matching your search query.'
-      );
-    }
-  }
+        if (hits.length === 0) {
+          toast.error('Sorry, there are no images matching your search query.');
+          setStatus(STATUSES.idle);
+          return;
+        }
 
-  addImages = async () => {
-    const { searchImage, page } = this.state;
+        const updateTotalPages = Math.ceil(totalHits / 12);
+        setTotalPages(updateTotalPages);
+        setImages(prevState => [...prevState, ...hits]);
 
-    try {
-      this.setState({ status: STATUSES.pending });
-      const { hits, totalHits } = await getImages(searchImage, page);
-      this.setState({ status: STATUSES.success });
-
-      if (hits.length === 0) {
-        toast.error('Sorry, there are no images matching your search query.');
-        this.setState({ status: STATUSES.idle });
-        return;
+        if (page === updateTotalPages) {
+          toast.success(
+            'Sorry, there are no more images matching your search query.'
+          );
+        }
+      } catch (error) {
+        setError(error.message);
+        setStatus(STATUSES.error);
       }
+    };
 
-      this.setState(prevState => ({
-        images: [...prevState.images, ...hits],
-        totalPages: Math.ceil(totalHits / 12),
-      }));
-    } catch (error) {
-      this.setState({ error: error.message, status: STATUSES.error });
+    addImages();
+  }, [searchImage, page]);
+
+  useEffect(() => {
+    if (error) {
+      toast.error(`Something went wrong! ${error}`);
     }
+  }, [error]);
+
+  const openModal = (largeImageURL, tags) => {
+    setShowModal(true);
+    setTags(tags);
+    setLargeImageURL(largeImageURL);
   };
 
-  openModal = (largeImageURL, tags) => {
-    this.setState({ showModal: true, tags, largeImageURL });
+  const closeModal = () => {
+    setShowModal(false);
+    setTags('');
   };
 
-  closeModal = () => {
-    this.setState({ showModal: false });
+  const onClickLodeMore = () => {
+    setPage(prevState => prevState + 1);
   };
 
-  onClickLodeMore = () => {
-    this.setState(prevState => ({ page: prevState.page + 1 }));
-  };
-
-  handleSubmit = query => {
-    if (this.state.searchImage === query) {
+  const handleSubmit = query => {
+    if (searchImage === query) {
       toast.success('You are already seeing images for this request.');
       return;
     }
-    this.setState({ searchImage: query, images: [], page: 1 });
+    setSearchImage(query);
+    setImages([]);
+    setPage(1);
   };
 
-  render() {
-    const { images, page, totalPages, showModal, largeImageURL, tags, status } =
-      this.state;
+  const showLoadMore = status === STATUSES.success && page !== totalPages;
 
-    const showLoadMore = status === STATUSES.success && page !== totalPages;
-
-    return (
-      <div className={css.main}>
-        <Searchbar onSubmit={this.handleSubmit} />
-        <ImageGallery images={images} onClickModal={this.openModal} />
-        {status === STATUSES.pending && <Loader />}
-        {showModal && (
-          <Modal
-            imgUrl={largeImageURL}
-            onCloseModal={this.closeModal}
-            tags={tags}
-          />
-        )}
-        {showLoadMore && <Button onClick={this.onClickLodeMore} />}
-        <ToastContainer
-          position="top-center"
-          autoClose={1500}
-          hideProgressBar={false}
-          newestOnTop={false}
-          closeOnClick
-          rtl={false}
-          pauseOnFocusLoss
-          draggable
-          pauseOnHover
-          theme="colored"
-        />
-      </div>
-    );
-  }
-}
+  return (
+    <div className={css.main}>
+      <Searchbar onSubmit={handleSubmit} />
+      {images.length > 0 && (
+        <ImageGallery images={images} onClickModal={openModal} />
+      )}
+      {status === STATUSES.pending && <Loader />}
+      {showModal && (
+        <Modal imgUrl={largeImageURL} onCloseModal={closeModal} tags={tags} />
+      )}
+      {showLoadMore && <Button onClick={onClickLodeMore} />}
+      <ToastContainer
+        position="top-right"
+        autoClose={4000}
+        hideProgressBar={false}
+        newestOnTop={false}
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+        theme="colored"
+      />
+    </div>
+  );
+};
