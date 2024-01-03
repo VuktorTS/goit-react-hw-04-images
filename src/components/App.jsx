@@ -47,7 +47,7 @@ export const App = () => {
 
         if (page === updateTotalPages) {
           toast.success(
-            'Sorry, there are no more images matching your search query.'
+            'These are all the images we found for you.'
           );
         }
       } catch (error) {
